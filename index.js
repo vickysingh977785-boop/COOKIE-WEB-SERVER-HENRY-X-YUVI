@@ -1,6 +1,6 @@
 // ========================================
 // ⚡ HENRY-X LUXURY SERVER ⚡
-// Full Version with Original Logic
+// Simplified Version (No Schedule)
 // Render FREE Compatible
 // ========================================
 
@@ -30,13 +30,6 @@ function broadcast(data) {
   });
 }
 
-wss.on("connection", ws => {
-  ws.send(JSON.stringify({
-    type: "status",
-    message: "⚡ HENRY-X System Connected",
-  }));
-});
-
 // ---------------- SESSION STORE ----------------
 const activeSessions = new Map();
 
@@ -45,23 +38,12 @@ function saveSession(id, api) {
   try {
     const file = path.join(__dirname, `session_${id}.json`);
     fs.writeFileSync(file, JSON.stringify(api.getAppState(), null, 2));
-    console.log("💾 Session saved:", id);
   } catch (e) {
     console.log("❌ Save error:", e.message);
   }
 }
 
-function loadSession(id) {
-  try {
-    const file = path.join(__dirname, `session_${id}.json`);
-    if (fs.existsSync(file)) {
-      return JSON.parse(fs.readFileSync(file, "utf8"));
-    }
-  } catch {}
-  return null;
-}
-
-// ---------------- LOGIN WITH COOKIES (Original Logic) ----------------
+// ---------------- LOGIN WITH COOKIES ----------------
 function loginWithCookie(cookieString, cb) {
   const methods = [
     next => {
@@ -85,10 +67,7 @@ function loginWithCookie(cookieString, cb) {
 function keepAlive(id, api) {
   return setInterval(() => {
     api.getCurrentUserID((e, uid) => {
-      if (!e) {
-        console.log("💎 Alive:", uid);
-        saveSession(id, api);
-      }
+      if (!e) saveSession(id, api);
     });
   }, 300000);
 }
@@ -135,18 +114,10 @@ color:#00ff9c;padding:10px;font-family:monospace;margin-top:20px;border-radius:1
   </div>
 </div>
 
-<div class="grid">
-  <div>
-    <label>4. Delay (Seconds)</label>
-    <input id="delay" type="number" value="10">
-  </div>
-  <div>
-    <label>5. Schedule (Optional)</label>
-    <input id="startTime" type="datetime-local">
-  </div>
-</div>
+<label>4. Delay (Seconds)</label>
+<input id="delay" type="number" value="10">
 
-<label>6. Select Gali File (.txt)</label>
+<label>5. Select Gali File (.txt)</label>
 <input type="file" id="fileInput" accept=".txt">
 
 <button class="btn-start" onclick="start()">🚀 START BOT</button>
@@ -180,7 +151,6 @@ async function start(){
       haterName: document.getElementById("haterName").value,
       group: document.getElementById("group").value,
       delay: document.getElementById("delay").value,
-      startTime: document.getElementById("startTime").value,
       messages: messages
     })
   });
@@ -197,50 +167,37 @@ function stop(){
 
 // ---------------- START BOT ROUTE ----------------
 app.post("/start", (req, res) => {
-  const { cookies, haterName, group, delay, messages, startTime } = req.body;
+  const { cookies, haterName, group, delay, messages } = req.body;
   const sessionId = "HX_" + Date.now();
 
-  const runTask = () => {
-    loginWithCookie(cookies, api => {
-      if (!api) return broadcast({ message: "❌ Login Failed! Check Cookies." });
+  loginWithCookie(cookies, api => {
+    if (!api) return broadcast({ message: "❌ Login Failed! Check Cookies." });
 
-      const session = {
-        api,
-        group,
-        haterName,
-        delay: delay * 1000,
-        messages,
-        index: 0
-      };
+    const session = {
+      api,
+      group,
+      haterName,
+      delay: (delay || 10) * 1000,
+      messages,
+      index: 0
+    };
 
-      session.interval = setInterval(() => {
-        const prefix = session.haterName ? session.haterName + " " : "";
-        const msg = prefix + session.messages[session.index];
-        
-        api.sendMessage(msg, session.group, (err) => {
-          if(!err) broadcast({ message: "✉️ Sent: " + msg });
-        });
-        
-        session.index = (session.index + 1) % session.messages.length;
-      }, session.delay);
+    session.interval = setInterval(() => {
+      const prefix = session.haterName ? session.haterName + " " : "";
+      const msg = prefix + (session.messages[session.index] || "No message found");
+      
+      api.sendMessage(msg, session.group, (err) => {
+        if(!err) broadcast({ message: "✉️ Sent: " + msg });
+      });
+      
+      session.index = (session.index + 1) % session.messages.length;
+    }, session.delay);
 
-      session.keep = keepAlive(sessionId, api);
-      activeSessions.set(sessionId, session);
-      saveSession(sessionId, api);
-      broadcast({ message: "✅ Bot Started on ID: " + group });
-    });
-  };
+    session.keep = keepAlive(sessionId, api);
+    activeSessions.set(sessionId, session);
+    broadcast({ message: "✅ Bot Started on ID: " + group });
+  });
 
-  if (startTime) {
-    const wait = new Date(startTime).getTime() - Date.now();
-    if (wait > 0) {
-      broadcast({ message: "⏰ Timer set for " + new Date(startTime).toLocaleString() });
-      setTimeout(runTask, wait);
-      return res.json({ success: true });
-    }
-  }
-
-  runTask();
   res.json({ success: true, sessionId });
 });
 

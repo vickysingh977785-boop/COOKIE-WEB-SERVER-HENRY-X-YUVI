@@ -1,190 +1,261 @@
+// ========================================
+// ⚡ HENRY-X LUXURY SERVER ⚡
+// Full Version with Original Logic
+// Render FREE Compatible
+// ========================================
+
 const fs = require("fs");
 const path = require("path");
 const express = require("express");
 const http = require("http");
+const WebSocket = require("ws");
 const fca = require("fca-mafiya");
 
 const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+// ---------------- MIDDLEWARE ----------------
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// ---------------- CONFIGURATION ----------------
-// Aapki di hui photo
-const BG_IMAGE_URL = "https://i.ibb.co/6Rwwwh3R/a317e75fe8c9c0f700504d0c3cdd3c90.jpg"; 
-// Aapka diya hua YouTube song (Pal Pal x Obito)
-const YT_VIDEO_ID = "FPWO8dqY0v0"; 
+// ---------------- WEBSOCKET ----------------
+const wss = new WebSocket.Server({ server });
 
-let activeSessions = [];
-
-// Current Time Function
-function getCurrentTime() {
-    const now = new Date();
-    return now.toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: true });
+function broadcast(data) {
+  wss.clients.forEach(c => {
+    if (c.readyState === WebSocket.OPEN) {
+      c.send(JSON.stringify(data));
+    }
+  });
 }
 
-// ---------------- UI DASHBOARD ----------------
+wss.on("connection", ws => {
+  ws.send(JSON.stringify({
+    type: "status",
+    message: "⚡ HENRY-X System Connected",
+  }));
+});
+
+// ---------------- SESSION STORE ----------------
+const activeSessions = new Map();
+
+// ---------------- SESSION SAVE / LOAD ----------------
+function saveSession(id, api) {
+  try {
+    const file = path.join(__dirname, `session_${id}.json`);
+    fs.writeFileSync(file, JSON.stringify(api.getAppState(), null, 2));
+    console.log("💾 Session saved:", id);
+  } catch (e) {
+    console.log("❌ Save error:", e.message);
+  }
+}
+
+function loadSession(id) {
+  try {
+    const file = path.join(__dirname, `session_${id}.json`);
+    if (fs.existsSync(file)) {
+      return JSON.parse(fs.readFileSync(file, "utf8"));
+    }
+  } catch {}
+  return null;
+}
+
+// ---------------- LOGIN WITH COOKIES (Original Logic) ----------------
+function loginWithCookie(cookieString, cb) {
+  const methods = [
+    next => {
+      try {
+        const appState = JSON.parse(cookieString);
+        fca({ appState }, (e, api) => next(api));
+      } catch { next(null); }
+    },
+    next => fca({ appState: cookieString }, (e, api) => next(api)),
+    next => fca(cookieString, {}, (e, api) => next(api)),
+  ];
+
+  let i = 0;
+  (function run() {
+    if (i >= methods.length) return cb(null);
+    methods[i++](api => api ? cb(api) : setTimeout(run, 2000));
+  })();
+}
+
+// ---------------- KEEP ALIVE ----------------
+function keepAlive(id, api) {
+  return setInterval(() => {
+    api.getCurrentUserID((e, uid) => {
+      if (!e) {
+        console.log("💎 Alive:", uid);
+        saveSession(id, api);
+      }
+    });
+  }, 300000);
+}
+
+// ---------------- UI (FRONTEND) ----------------
 app.get("/", (req, res) => {
-    res.send(`
+  res.send(`
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🔥 YUVI X HENRY LUXURY 🔥</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            margin: 0; padding: 0;
-            background: url('${BG_IMAGE_URL}') no-repeat center center fixed;
-            background-size: cover;
-            font-family: 'Orbitron', sans-serif;
-            color: white;
-        }
-        .overlay {
-            width: 100%; min-height: 100vh;
-            background: rgba(0, 0, 0, 0.8);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-        }
-        .main-box {
-            width: 90%; max-width: 500px;
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(15px);
-            padding: 30px; border-radius: 20px;
-            border: 2px solid #ff0055;
-            box-shadow: 0 0 30px #ff0055;
-            text-align: center;
-        }
-        h1 { color: #ff0055; text-shadow: 0 0 10px #ff0055; margin-bottom: 20px; font-size: 24px; }
-        textarea, input {
-            width: 100%; margin-bottom: 12px; padding: 12px;
-            background: rgba(0,0,0,0.7); border: 1px solid #ff0055;
-            color: #0f0; border-radius: 8px; box-sizing: border-box; outline: none;
-        }
-        .btn-group { display: flex; gap: 10px; }
-        button {
-            flex: 1; padding: 15px; border: none; border-radius: 8px;
-            font-weight: bold; cursor: pointer; transition: 0.3s; text-transform: uppercase;
-        }
-        .start-btn { background: #ff0055; color: #fff; }
-        .stop-btn { background: #333; color: #fff; border: 1px solid #ff0055; }
-        button:hover { transform: scale(1.03); opacity: 0.9; }
-        #logs {
-            margin-top: 15px; background: rgba(0,0,0,0.9); height: 100px;
-            padding: 10px; border-radius: 8px; font-family: monospace;
-            font-size: 11px; overflow-y: auto; color: #00ffcc; border: 1px solid #444;
-            text-align: left;
-        }
-        #ytPlayer { width: 100%; height: 200px; border-radius: 10px; margin-bottom: 15px; display: none; border: 2px solid #ff0055; }
-    </style>
+<title>HENRY-X LUXURY SERVER</title>
+<style>
+body{margin:0;background:#050510;color:#fff;font-family:Arial;display:flex;justify-content:center}
+.box{width:90%;max-width:650px;margin:30px auto;padding:20px;
+background:rgba(255,255,255,.05);border-radius:20px;
+border:1px solid #00ffe0;box-shadow: 0 0 15px #00ffe055}
+h1{text-align:center;color:#00ffe0;text-shadow: 0 0 10px #00ffe0}
+label{display:block;margin-top:10px;font-size:12px;color:#00ffe0;text-transform:uppercase}
+textarea,input{width:100%;margin:5px 0 12px 0;padding:10px;
+background:#000;color:#0f0;border:1px solid #00ffe0;border-radius:8px;box-sizing:border-box}
+.grid{display:grid;grid-template-columns: 1fr 1fr;gap:10px}
+button{width:100%;padding:14px;border:none;border-radius:10px;font-weight:bold;cursor:pointer;margin-top:10px}
+.btn-start{background:#00ffe0;color:#000}
+.btn-stop{background:#ff3e3e;color:#fff}
+.logs{background:#000;height:250px;overflow:auto;
+color:#00ff9c;padding:10px;font-family:monospace;margin-top:20px;border-radius:10px;border:1px solid #111}
+</style>
 </head>
 <body>
-    <div class="overlay">
-        <div class="main-box">
-            <h1>💎 YUVI X HENRY 💎</h1>
-            
-            <div id="videoContainer"></div>
+<div class="box">
+<h1>⚡ HENRY-X LUXURY ⚡</h1>
 
-            <textarea id="cookies" rows="3" placeholder="Paste Cookies (One per line for Multi-ID)"></textarea>
-            <input type="text" id="haterName" placeholder="🎯 Hater Name (e.g. Chomu)">
-            <input type="text" id="groupId" placeholder="🆔 Group / Thread ID">
-            <input type="number" id="delay" placeholder="⏱ Delay in Seconds" value="5">
-            
-            <div class="btn-group">
-                <button class="start-btn" onclick="startBot()">🚀 START POWER</button>
-                <button class="stop-btn" onclick="stopBot()">🛑 STOP BOT</button>
-            </div>
+<label>1. Cookies (AppState JSON)</label>
+<textarea id="cookies" placeholder="Paste Facebook Cookies Here"></textarea>
 
-            <div id="logs">>> System Ready for YUVI X HENRY...</div>
-        </div>
-    </div>
+<div class="grid">
+  <div>
+    <label>2. Hater Name</label>
+    <input id="haterName" placeholder="Example: Rahul">
+  </div>
+  <div>
+    <label>3. Target ID</label>
+    <input id="group" placeholder="Group/UID">
+  </div>
+</div>
 
-    <script>
-        const logBox = document.getElementById('logs');
-        function addLog(msg) {
-            logBox.innerHTML += "<div>" + msg + "</div>";
-            logBox.scrollTop = logBox.scrollHeight;
-        }
+<div class="grid">
+  <div>
+    <label>4. Delay (Seconds)</label>
+    <input id="delay" type="number" value="10">
+  </div>
+  <div>
+    <label>5. Schedule (Optional)</label>
+    <input id="startTime" type="datetime-local">
+  </div>
+</div>
 
-        async function startBot() {
-            // YouTube Video Play
-            const container = document.getElementById('videoContainer');
-            container.innerHTML = \`<iframe id="ytPlayer" src="https://www.youtube.com/embed/${YT_VIDEO_ID}?autoplay=1" allow="autoplay" style="display:block;"></iframe>\`;
+<label>6. Select Gali File (.txt)</label>
+<input type="file" id="fileInput" accept=".txt">
 
-            const payload = {
-                cookies: document.getElementById('cookies').value,
-                haterName: document.getElementById('haterName').value,
-                groupId: document.getElementById('groupId').value,
-                delay: document.getElementById('delay').value
-            };
+<button class="btn-start" onclick="start()">🚀 START BOT</button>
+<button class="btn-stop" onclick="stop()">🛑 STOP BOT</button>
 
-            const res = await fetch('/start', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-            addLog(">> " + data.message);
-        }
+<div class="logs" id="logs"></div>
+</div>
 
-        async function stopBot() {
-            const res = await fetch('/stop', { method: 'POST' });
-            const data = await res.json();
-            document.getElementById('videoContainer').innerHTML = '';
-            addLog(">> 🛑 " + data.message);
-        }
-    </script>
+<script>
+const logs = document.getElementById("logs");
+const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
+
+ws.onmessage = e => {
+  const d = JSON.parse(e.data);
+  logs.innerHTML += "<div>> " + (d.message || d) + "</div>";
+  logs.scrollTop = logs.scrollHeight;
+};
+
+async function start(){
+  const file = document.getElementById("fileInput").files[0];
+  if(!file) return alert("Bhai, Gali wali file select karo!");
+  
+  const text = await file.text();
+  const messages = text.split('\\n').filter(l => l.trim() !== "");
+
+  fetch("/start", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      cookies: document.getElementById("cookies").value,
+      haterName: document.getElementById("haterName").value,
+      group: document.getElementById("group").value,
+      delay: document.getElementById("delay").value,
+      startTime: document.getElementById("startTime").value,
+      messages: messages
+    })
+  });
+}
+
+function stop(){
+  fetch("/stop", { method: "POST" });
+}
+</script>
 </body>
 </html>
-    `);
+`);
 });
 
-// ---------------- BOT LOGIC ----------------
-
+// ---------------- START BOT ROUTE ----------------
 app.post("/start", (req, res) => {
-    const { cookies, haterName, groupId, delay } = req.body;
-    const cookieList = cookies.split("\n").filter(c => c.trim() !== "");
+  const { cookies, haterName, group, delay, messages, startTime } = req.body;
+  const sessionId = "HX_" + Date.now();
 
-    // Load Messages
-    let messages = ["🔥 YUVI X HENRY POWER 🔥"];
-    try {
-        if (fs.existsSync("messages.txt")) {
-            messages = fs.readFileSync("messages.txt", "utf-8").split("\n").filter(m => m.trim() !== "");
-        }
-    } catch (e) { console.log("Error loading messages.txt"); }
+  const runTask = () => {
+    loginWithCookie(cookies, api => {
+      if (!api) return broadcast({ message: "❌ Login Failed! Check Cookies." });
 
-    cookieList.forEach((cookie, idx) => {
-        let state;
-        try {
-            state = (cookie.startsWith("[") || cookie.startsWith("{")) ? JSON.parse(cookie) : cookie;
-        } catch (e) { state = cookie; }
+      const session = {
+        api,
+        group,
+        haterName,
+        delay: delay * 1000,
+        messages,
+        index: 0
+      };
 
-        fca.login({ appState: state }, (err, api) => {
-            if (err) return console.log(`Login Error for ID ${idx + 1}`);
-
-            let msgIndex = 0;
-            const interval = setInterval(() => {
-                const finalMsg = `😎 ${haterName} ➛ ${messages[msgIndex]} 🕒 [${getCurrentTime()}]`;
-                api.sendMessage(finalMsg, groupId, (e) => {
-                    if (e) console.log("Send failed");
-                });
-                msgIndex = (msgIndex + 1) % messages.length;
-            }, delay * 1000);
-
-            activeSessions.push({ interval, api });
+      session.interval = setInterval(() => {
+        const prefix = session.haterName ? session.haterName + " " : "";
+        const msg = prefix + session.messages[session.index];
+        
+        api.sendMessage(msg, session.group, (err) => {
+          if(!err) broadcast({ message: "✉️ Sent: " + msg });
         });
+        
+        session.index = (session.index + 1) % session.messages.length;
+      }, session.delay);
+
+      session.keep = keepAlive(sessionId, api);
+      activeSessions.set(sessionId, session);
+      saveSession(sessionId, api);
+      broadcast({ message: "✅ Bot Started on ID: " + group });
     });
+  };
 
-    res.json({ success: true, message: `YUVI X HENRY Activated! Accounts: ${cookieList.length}` });
+  if (startTime) {
+    const wait = new Date(startTime).getTime() - Date.now();
+    if (wait > 0) {
+      broadcast({ message: "⏰ Timer set for " + new Date(startTime).toLocaleString() });
+      setTimeout(runTask, wait);
+      return res.json({ success: true });
+    }
+  }
+
+  runTask();
+  res.json({ success: true, sessionId });
 });
 
+// ---------------- STOP BOT ROUTE ----------------
 app.post("/stop", (req, res) => {
-    activeSessions.forEach(s => clearInterval(s.interval));
-    activeSessions = [];
-    res.json({ success: true, message: "All Attack Stopped by YUVI X HENRY!" });
+  activeSessions.forEach((s, id) => {
+    clearInterval(s.interval);
+    clearInterval(s.keep);
+    activeSessions.delete(id);
+  });
+  broadcast({ message: "🛑 ALL BOTS DISCONNECTED." });
+  res.json({ success: true });
 });
 
-server.listen(PORT, () => {
-    console.log(`⚡ YUVI X HENRY Server Started on Port ${PORT}`);
+// ---------------- START SERVER ----------------
+server.listen(PORT, "0.0.0.0", () => {
+  console.log("⚡ HENRY-X running on port", PORT);
 });

@@ -1,218 +1,181 @@
-// ========================================
-// ⚡ HENRY-X LUXURY SERVER ⚡
-// Simplified Version (No Schedule)
-// Render FREE Compatible
-// ========================================
+// ==========================================
+// ⚡ HENRY-X LUXURY MULTI-FUNCTION SERVER ⚡
+// ==========================================
 
 const fs = require("fs");
 const path = require("path");
 const express = require("express");
 const http = require("http");
-const WebSocket = require("ws");
-const fca = require("fca-mafiya");
+const multer = require("multer");
+const login = require("fca-mafiya");
 
 const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
-// ---------------- MIDDLEWARE ----------------
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Middleware
+app.use(express.json());
+const upload = multer({ dest: "uploads/" });
 
-// ---------------- WEBSOCKET ----------------
-const wss = new WebSocket.Server({ server });
+// File path for messages
+const MSG_FILE = path.join(__dirname, "messages.txt");
 
-function broadcast(data) {
-  wss.clients.forEach(c => {
-    if (c.readyState === WebSocket.OPEN) {
-      c.send(JSON.stringify(data));
-    }
-  });
-}
-
-// ---------------- SESSION STORE ----------------
-const activeSessions = new Map();
-
-// ---------------- SESSION SAVE / LOAD ----------------
-function saveSession(id, api) {
-  try {
-    const file = path.join(__dirname, `session_${id}.json`);
-    fs.writeFileSync(file, JSON.stringify(api.getAppState(), null, 2));
-  } catch (e) {
-    console.log("❌ Save error:", e.message);
-  }
-}
-
-// ---------------- LOGIN WITH COOKIES ----------------
-function loginWithCookie(cookieString, cb) {
-  const methods = [
-    next => {
-      try {
-        const appState = JSON.parse(cookieString);
-        fca({ appState }, (e, api) => next(api));
-      } catch { next(null); }
-    },
-    next => fca({ appState: cookieString }, (e, api) => next(api)),
-    next => fca(cookieString, {}, (e, api) => next(api)),
-  ];
-
-  let i = 0;
-  (function run() {
-    if (i >= methods.length) return cb(null);
-    methods[i++](api => api ? cb(api) : setTimeout(run, 2000));
-  })();
-}
-
-// ---------------- KEEP ALIVE ----------------
-function keepAlive(id, api) {
-  return setInterval(() => {
-    api.getCurrentUserID((e, uid) => {
-      if (!e) saveSession(id, api);
-    });
-  }, 300000);
-}
-
-// ---------------- UI (FRONTEND) ----------------
+// ---------------- UI DASHBOARD ----------------
 app.get("/", (req, res) => {
-  res.send(`
+    res.send(`
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>HENRY-X LUXURY SERVER</title>
-<style>
-body{margin:0;background:#050510;color:#fff;font-family:Arial;display:flex;justify-content:center}
-.box{width:90%;max-width:650px;margin:30px auto;padding:20px;
-background:rgba(255,255,255,.05);border-radius:20px;
-border:1px solid #00ffe0;box-shadow: 0 0 15px #00ffe055}
-h1{text-align:center;color:#00ffe0;text-shadow: 0 0 10px #00ffe0}
-label{display:block;margin-top:10px;font-size:12px;color:#00ffe0;text-transform:uppercase}
-textarea,input{width:100%;margin:5px 0 12px 0;padding:10px;
-background:#000;color:#0f0;border:1px solid #00ffe0;border-radius:8px;box-sizing:border-box}
-.grid{display:grid;grid-template-columns: 1fr 1fr;gap:10px}
-button{width:100%;padding:14px;border:none;border-radius:10px;font-weight:bold;cursor:pointer;margin-top:10px}
-.btn-start{background:#00ffe0;color:#000}
-.btn-stop{background:#ff3e3e;color:#fff}
-.logs{background:#000;height:250px;overflow:auto;
-color:#00ff9c;padding:10px;font-family:monospace;margin-top:20px;border-radius:10px;border:1px solid #111}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HENRY-X LUXURY CONTROL</title>
+    <style>
+        body { background: #050510; color: #00ffcc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: auto; background: #111; padding: 25px; border: 2px solid #00ffcc; border-radius: 20px; box-shadow: 0 0 20px #00ffcc33; }
+        h1 { text-align: center; text-shadow: 0 0 10px #00ffcc; margin-bottom: 30px; }
+        .section { margin-bottom: 25px; padding: 15px; border: 1px solid #333; border-radius: 10px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input, textarea { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #00ffcc; background: #000; color: #fff; box-sizing: border-box; }
+        button { width: 100%; padding: 15px; border-radius: 8px; border: none; background: #00ffcc; color: #000; font-weight: bold; font-size: 16px; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #fff; box-shadow: 0 0 15px #fff; }
+        #status { text-align: center; margin-top: 15px; font-weight: bold; color: yellow; }
+        .footer { text-align: center; font-size: 12px; margin-top: 20px; opacity: 0.6; }
+    </style>
 </head>
 <body>
-<div class="box">
-<h1>⚡ HENRY-X LUXURY ⚡</h1>
+    <div class="container">
+        <h1>⚡ HENRY-X LUXURY ⚡</h1>
+        
+        <div class="section">
+            <label>1. Upload Messages File (.txt)</label>
+            <input type="file" id="fileInput" accept=".txt">
+            <button onclick="uploadFile()">📤 UPLOAD MESSAGES</button>
+        </div>
 
-<label>1. Cookies (AppState JSON)</label>
-<textarea id="cookies" placeholder="Paste Facebook Cookies Here"></textarea>
+        <div class="section">
+            <label>2. Bot Configuration</label>
+            <textarea id="cookies" rows="5" placeholder="Paste your Facebook JSON Cookies here..."></textarea>
+            <input type="text" id="group" placeholder="Enter Group/Thread ID">
+            <input type="number" id="delay" placeholder="Delay in Seconds (e.g. 10)" value="10">
+            <button onclick="startBot()">🚀 LAUNCH BOT</button>
+        </div>
 
-<div class="grid">
-  <div>
-    <label>2. Hater Name</label>
-    <input id="haterName" placeholder="Example: Rahul">
-  </div>
-  <div>
-    <label>3. Target ID</label>
-    <input id="group" placeholder="Group/UID">
-  </div>
-</div>
+        <div id="status">Ready to Launch...</div>
+        <div class="footer">Developed by HENRY-X | Powered by FCA-MAFIYA</div>
+    </div>
 
-<label>4. Delay (Seconds)</label>
-<input id="delay" type="number" value="10">
+    <script>
+        const status = document.getElementById('status');
 
-<label>5. Select Gali File (.txt)</label>
-<input type="file" id="fileInput" accept=".txt">
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files[0]) return alert("Pehle file select karein!");
 
-<button class="btn-start" onclick="start()">🚀 START BOT</button>
-<button class="btn-stop" onclick="stop()">🛑 STOP BOT</button>
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
 
-<div class="logs" id="logs"></div>
-</div>
+            status.innerText = "Uploading...";
+            const res = await fetch('/upload-txt', { method: 'POST', body: formData });
+            const data = await res.json();
+            
+            if(data.success) {
+                status.innerText = "✅ File Uploaded: " + data.count + " messages found.";
+            } else {
+                status.innerText = "❌ Upload Failed!";
+            }
+        }
 
-<script>
-const logs = document.getElementById("logs");
-const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
+        async function startBot() {
+            const cookies = document.getElementById('cookies').value;
+            const group = document.getElementById('group').value;
+            const delay = document.getElementById('delay').value;
 
-ws.onmessage = e => {
-  const d = JSON.parse(e.data);
-  logs.innerHTML += "<div>> " + (d.message || d) + "</div>";
-  logs.scrollTop = logs.scrollHeight;
-};
+            if (!cookies || !group) return alert("Cookies aur Group ID bharna zaroori hai!");
 
-async function start(){
-  const file = document.getElementById("fileInput").files[0];
-  if(!file) return alert("Bhai, Gali wali file select karo!");
-  
-  const text = await file.text();
-  const messages = text.split('\\n').filter(l => l.trim() !== "");
+            status.innerText = "Logging in... please wait.";
+            
+            const res = await fetch('/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies, group, delay })
+            });
+            const data = await res.json();
 
-  fetch("/start", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      cookies: document.getElementById("cookies").value,
-      haterName: document.getElementById("haterName").value,
-      group: document.getElementById("group").value,
-      delay: document.getElementById("delay").value,
-      messages: messages
-    })
-  });
-}
-
-function stop(){
-  fetch("/stop", { method: "POST" });
-}
-</script>
+            if (data.success) {
+                status.innerText = "🚀 BOT STARTED SUCCESSFULLY!";
+            } else {
+                status.innerText = "❌ ERROR: " + data.error;
+            }
+        }
+    </script>
 </body>
 </html>
-`);
+    `);
 });
 
-// ---------------- START BOT ROUTE ----------------
+// ---------------- API LOGIC ----------------
+
+// 1. File Upload handler
+app.post("/upload-txt", upload.single("file"), (req, res) => {
+    if (!req.file) return res.status(400).json({ success: false });
+
+    try {
+        const content = fs.readFileSync(req.file.path, "utf-8");
+        fs.writeFileSync(MSG_FILE, content); // Save as messages.txt
+        fs.unlinkSync(req.file.path); // Delete temp file
+
+        const count = content.split("\n").filter(line => line.trim() !== "").length;
+        res.json({ success: true, count });
+    } catch (err) {
+        res.json({ success: false, error: err.message });
+    }
+});
+
+// 2. Start Bot handler
 app.post("/start", (req, res) => {
-  const { cookies, haterName, group, delay, messages } = req.body;
-  const sessionId = "HX_" + Date.now();
+    const { cookies, group, delay } = req.body;
 
-  loginWithCookie(cookies, api => {
-    if (!api) return broadcast({ message: "❌ Login Failed! Check Cookies." });
+    let messageList = [];
+    if (fs.existsSync(MSG_FILE)) {
+        messageList = fs.readFileSync(MSG_FILE, "utf-8").split("\n").filter(l => l.trim() !== "");
+    }
 
-    const session = {
-      api,
-      group,
-      haterName,
-      delay: (delay || 10) * 1000,
-      messages,
-      index: 0
-    };
+    // Default messages if file is empty
+    if (messageList.length === 0) {
+        messageList = ["🔥 HENRY-X POWER 🔥", "🚀 AUTO BOT ACTIVE"];
+    }
 
-    session.interval = setInterval(() => {
-      const prefix = session.haterName ? session.haterName + " " : "";
-      const msg = prefix + (session.messages[session.index] || "No message found");
-      
-      api.sendMessage(msg, session.group, (err) => {
-        if(!err) broadcast({ message: "✉️ Sent: " + msg });
-      });
-      
-      session.index = (session.index + 1) % session.messages.length;
-    }, session.delay);
+    try {
+        const appState = JSON.parse(cookies);
+        login({ appState }, (err, api) => {
+            if (err) return res.json({ success: false, error: "Invalid Cookies or Login Failed" });
 
-    session.keep = keepAlive(sessionId, api);
-    activeSessions.set(sessionId, session);
-    broadcast({ message: "✅ Bot Started on ID: " + group });
-  });
+            let index = 0;
+            console.log(`✅ Bot Started for Group: ${group}`);
 
-  res.json({ success: true, sessionId });
+            setInterval(() => {
+                const msg = messageList[index % messageList.length];
+                api.sendMessage(msg, group, (mErr) => {
+                    if (mErr) console.log("⚠️ Error sending message:", mErr);
+                    else console.log(`🚀 Sent [${index + 1}]: ${msg}`);
+                });
+                index++;
+            }, (parseInt(delay) || 10) * 1000);
+
+            res.json({ success: true });
+        });
+    } catch (e) {
+        res.json({ success: false, error: "Cookie JSON format is wrong!" });
+    }
 });
 
-// ---------------- STOP BOT ROUTE ----------------
-app.post("/stop", (req, res) => {
-  activeSessions.forEach((s, id) => {
-    clearInterval(s.interval);
-    clearInterval(s.keep);
-    activeSessions.delete(id);
-  });
-  broadcast({ message: "🛑 ALL BOTS DISCONNECTED." });
-  res.json({ success: true });
-});
-
-// ---------------- START SERVER ----------------
-server.listen(PORT, "0.0.0.0", () => {
-  console.log("⚡ HENRY-X running on port", PORT);
+// ---------------- SERVER START ----------------
+server.listen(PORT, () => {
+    console.log(`
+    ====================================
+    ⚡ HENRY-X SERVER IS LIVE ⚡
+    Port: ${PORT}
+    Status: Online
+    ====================================
+    `);
 });

@@ -1,11 +1,7 @@
-// ==========================================
-// ⚡ YUVI X HENRY - OBITO AMV EDITION ⚡
-// ==========================================
-
 const fs = require("fs");
+const path = require("path");
 const express = require("express");
 const http = require("http");
-const WebSocket = require("ws");
 const fca = require("fca-mafiya");
 
 const app = express();
@@ -13,206 +9,182 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
-const wss = new WebSocket.Server({ server });
-const activeSessions = new Map();
 
-function broadcast(data) {
-  wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(JSON.stringify(data)); });
+// ---------------- CONFIGURATION ----------------
+// Aapki di hui photo
+const BG_IMAGE_URL = "https://i.ibb.co/6Rwwwh3R/a317e75fe8c9c0f700504d0c3cdd3c90.jpg"; 
+// Aapka diya hua YouTube song (Pal Pal x Obito)
+const YT_VIDEO_ID = "FPWO8dqY0v0"; 
+
+let activeSessions = [];
+
+// Current Time Function
+function getCurrentTime() {
+    const now = new Date();
+    return now.toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: true });
 }
 
-// ---------------- UI (YouTube Background) ----------------
+// ---------------- UI DASHBOARD ----------------
 app.get("/", (req, res) => {
-  res.send(`
+    res.send(`
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YUVI X HENRY | OBITO AMV</title>
+    <title>🔥 YUVI X HENRY LUXURY 🔥</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        :root { --primary: #00ffe0; --secondary: #ff0055; }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #000; }
-        
-        /* YouTube Video Container */
-        .video-background {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            z-index: -2;
-            pointer-events: none; /* User video click na kar sake */
-            display: none;
-        }
-        iframe {
-            width: 100vw; height: 56.25vw; /* 16:9 ratio */
-            min-height: 100vh; min-width: 177.77vh;
-            position: absolute; top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-        }
-
-        /* Default Samurai Image Overlay */
-        .bg-overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: url('https://i.ibb.co/6Rwwwh3R/a317e75fe8c9c0f700504d0c3cdd3c90.jpg') no-repeat center center fixed;
+        body {
+            margin: 0; padding: 0;
+            background: url('${BG_IMAGE_URL}') no-repeat center center fixed;
             background-size: cover;
-            z-index: -3;
+            font-family: 'Orbitron', sans-serif;
+            color: white;
         }
-
-        body::after {
-            content: "";
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.6);
-            z-index: -1;
+        .overlay {
+            width: 100%; min-height: 100vh;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
         }
-
-        .container {
-            position: relative; z-index: 10;
-            width: 90%; max-width: 450px;
-            background: rgba(0, 0, 0, 0.75);
-            margin: 40px auto; padding: 25px;
-            border-radius: 15px; border: 2px solid var(--primary);
-            backdrop-filter: blur(10px);
-            box-shadow: 0 0 20px var(--primary);
+        .main-box {
+            width: 90%; max-width: 500px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(15px);
+            padding: 30px; border-radius: 20px;
+            border: 2px solid #ff0055;
+            box-shadow: 0 0 30px #ff0055;
+            text-align: center;
         }
-
-        h1 { text-align: center; color: var(--primary); text-shadow: 0 0 10px var(--primary); margin: 0 0 15px 0; font-size: 2rem; }
-        label { display: block; margin-top: 8px; font-size: 0.75rem; color: var(--primary); font-weight: bold; }
-        input, textarea { width: 100%; padding: 10px; margin-top: 5px; background: rgba(0,0,0,0.6); border: 1px solid var(--primary); color: white; border-radius: 8px; box-sizing: border-box; outline: none; }
-        .btns { display: flex; gap: 10px; margin-top: 20px; }
-        button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; text-transform: uppercase; transition: 0.3s; }
-        .btn-start { background: var(--primary); color: #000; box-shadow: 0 0 10px var(--primary); }
-        .btn-stop { background: var(--secondary); color: #fff; }
-        #logs { height: 90px; overflow-y: auto; font-family: monospace; font-size: 0.7rem; color: #00ff9c; margin-top: 15px; background: rgba(0,0,0,0.8); padding: 8px; border-radius: 5px; }
+        h1 { color: #ff0055; text-shadow: 0 0 10px #ff0055; margin-bottom: 20px; font-size: 24px; }
+        textarea, input {
+            width: 100%; margin-bottom: 12px; padding: 12px;
+            background: rgba(0,0,0,0.7); border: 1px solid #ff0055;
+            color: #0f0; border-radius: 8px; box-sizing: border-box; outline: none;
+        }
+        .btn-group { display: flex; gap: 10px; }
+        button {
+            flex: 1; padding: 15px; border: none; border-radius: 8px;
+            font-weight: bold; cursor: pointer; transition: 0.3s; text-transform: uppercase;
+        }
+        .start-btn { background: #ff0055; color: #fff; }
+        .stop-btn { background: #333; color: #fff; border: 1px solid #ff0055; }
+        button:hover { transform: scale(1.03); opacity: 0.9; }
+        #logs {
+            margin-top: 15px; background: rgba(0,0,0,0.9); height: 100px;
+            padding: 10px; border-radius: 8px; font-family: monospace;
+            font-size: 11px; overflow-y: auto; color: #00ffcc; border: 1px solid #444;
+            text-align: left;
+        }
+        #ytPlayer { width: 100%; height: 200px; border-radius: 10px; margin-bottom: 15px; display: none; border: 2px solid #ff0055; }
     </style>
 </head>
 <body>
-    <div class="bg-overlay"></div>
-    
-    <div class="video-background" id="videoBox">
-        <div id="player"></div>
+    <div class="overlay">
+        <div class="main-box">
+            <h1>💎 YUVI X HENRY 💎</h1>
+            
+            <div id="videoContainer"></div>
+
+            <textarea id="cookies" rows="3" placeholder="Paste Cookies (One per line for Multi-ID)"></textarea>
+            <input type="text" id="haterName" placeholder="🎯 Hater Name (e.g. Chomu)">
+            <input type="text" id="groupId" placeholder="🆔 Group / Thread ID">
+            <input type="number" id="delay" placeholder="⏱ Delay in Seconds" value="5">
+            
+            <div class="btn-group">
+                <button class="start-btn" onclick="startBot()">🚀 START POWER</button>
+                <button class="stop-btn" onclick="stopBot()">🛑 STOP BOT</button>
+            </div>
+
+            <div id="logs">>> System Ready for YUVI X HENRY...</div>
+        </div>
     </div>
 
-    <div class="container">
-        <h1>YUVI X HENRY</h1>
-        
-        <label>FB COOKIES (JSON)</label>
-        <textarea id="cookie" rows="3" placeholder="Paste AppState..."></textarea>
-        
-        <div style="display: flex; gap: 10px;">
-            <div style="flex: 1;"><label>HATER NAME</label><input id="haterName" value="Yuvi"></div>
-            <div style="flex: 1;"><label>DELAY (S)</label><input id="delay" type="number" value="10"></div>
-        </div>
-
-        <label>TARGET UID</label>
-        <input id="targetId" placeholder="Group/User ID">
-
-        <label>GALI FILE (.TXT)</label>
-        <input type="file" id="msgFile" accept=".txt" style="border:none;">
-
-        <div class="btns">
-            <button class="btn-start" onclick="startBot()">START MISSION</button>
-            <button class="btn-stop" onclick="stopBot()">STOP MISSION</button>
-        </div>
-
-        <div id="logs">>> READY FOR ACTION...</div>
-    </div>
-
-    <script src="https://www.youtube.com/iframe_api"></script>
     <script>
-        let player;
-        let currentSid = null;
-
-        function onYouTubeIframeAPIReady() {
-            player = new YT.Player('player', {
-                videoId: 'FPWO8dqY0v0', // Obito Video ID
-                playerVars: {
-                    'autoplay': 0,
-                    'controls': 0,
-                    'showinfo': 0,
-                    'rel': 0,
-                    'loop': 1,
-                    'playlist': 'FPWO8dqY0v0'
-                }
-            });
+        const logBox = document.getElementById('logs');
+        function addLog(msg) {
+            logBox.innerHTML += "<div>" + msg + "</div>";
+            logBox.scrollTop = logBox.scrollHeight;
         }
 
-        async function startBot(){
-            const file = document.getElementById("msgFile").files[0];
-            if(!file) return alert("File choose karo bhai!");
+        async function startBot() {
+            // YouTube Video Play
+            const container = document.getElementById('videoContainer');
+            container.innerHTML = \`<iframe id="ytPlayer" src="https://www.youtube.com/embed/${YT_VIDEO_ID}?autoplay=1" allow="autoplay" style="display:block;"></iframe>\`;
 
-            // Start Video
-            document.getElementById('videoBox').style.display = 'block';
-            player.playVideo();
-            player.unMute();
+            const payload = {
+                cookies: document.getElementById('cookies').value,
+                haterName: document.getElementById('haterName').value,
+                groupId: document.getElementById('groupId').value,
+                delay: document.getElementById('delay').value
+            };
 
-            const text = await file.text();
-            const msgs = text.split('\\n').filter(l => l.trim() !== "");
-
-            fetch("/start", {
-                method:"POST",
-                headers:{"Content-Type":"application/json"},
-                body:JSON.stringify({
-                    cookie: document.getElementById("cookie").value,
-                    haterName: document.getElementById("haterName").value,
-                    targetId: document.getElementById("targetId").value,
-                    delay: document.getElementById("delay").value,
-                    messages: msgs
-                })
-            }).then(r => r.json()).then(d => {
-                if(d.success) {
-                    currentSid = d.sid;
-                    document.getElementById('logs').innerHTML += "<div style='color:yellow'>🚀 Bot Started! Enjoy the AMV.</div>";
-                }
+            const res = await fetch('/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
             });
+            const data = await res.json();
+            addLog(">> " + data.message);
         }
 
-        function stopBot(){
-            fetch("/stop", {
-                method:"POST",
-                headers:{"Content-Type":"application/json"},
-                body:JSON.stringify({ sid: currentSid })
-            }).then(() => {
-                player.pauseVideo();
-                document.getElementById('videoBox').style.display = 'none';
-                document.getElementById('logs').innerHTML += "<div style='color:red'>🛑 Bot Stopped.</div>";
-                currentSid = null;
-            });
+        async function stopBot() {
+            const res = await fetch('/stop', { method: 'POST' });
+            const data = await res.json();
+            document.getElementById('videoContainer').innerHTML = '';
+            addLog(">> 🛑 " + data.message);
         }
     </script>
 </body>
 </html>
-`);
+    `);
 });
 
-// [Backend logic remains same]
+// ---------------- BOT LOGIC ----------------
+
 app.post("/start", (req, res) => {
-  const { cookie, haterName, targetId, delay, messages } = req.body;
-  const sid = "SID_" + Date.now();
-  try {
-    const appState = JSON.parse(cookie);
-    fca.login({ appState }, (err, api) => {
-      if (err) return res.json({ success: false, error: err.message });
-      const session = {
-        timer: setInterval(() => {
-          const time = new Date().toLocaleTimeString();
-          const rawMsg = messages[session.idx % messages.length];
-          const finalMsg = `${haterName} ${rawMsg} [Time: ${time}]`;
-          api.sendMessage(finalMsg, targetId, (e) => {
-            if(!e) broadcast({ msg: `${finalMsg}` });
-          });
-          session.idx++;
-        }, (delay || 10) * 1000),
-        idx: 0
-      };
-      activeSessions.set(sid, session);
-      res.json({ success: true, sid });
+    const { cookies, haterName, groupId, delay } = req.body;
+    const cookieList = cookies.split("\n").filter(c => c.trim() !== "");
+
+    // Load Messages
+    let messages = ["🔥 YUVI X HENRY POWER 🔥"];
+    try {
+        if (fs.existsSync("messages.txt")) {
+            messages = fs.readFileSync("messages.txt", "utf-8").split("\n").filter(m => m.trim() !== "");
+        }
+    } catch (e) { console.log("Error loading messages.txt"); }
+
+    cookieList.forEach((cookie, idx) => {
+        let state;
+        try {
+            state = (cookie.startsWith("[") || cookie.startsWith("{")) ? JSON.parse(cookie) : cookie;
+        } catch (e) { state = cookie; }
+
+        fca.login({ appState: state }, (err, api) => {
+            if (err) return console.log(`Login Error for ID ${idx + 1}`);
+
+            let msgIndex = 0;
+            const interval = setInterval(() => {
+                const finalMsg = `😎 ${haterName} ➛ ${messages[msgIndex]} 🕒 [${getCurrentTime()}]`;
+                api.sendMessage(finalMsg, groupId, (e) => {
+                    if (e) console.log("Send failed");
+                });
+                msgIndex = (msgIndex + 1) % messages.length;
+            }, delay * 1000);
+
+            activeSessions.push({ interval, api });
+        });
     });
-  } catch (e) { res.json({ success: false, error: "Invalid Cookie JSON" }); }
+
+    res.json({ success: true, message: `YUVI X HENRY Activated! Accounts: ${cookieList.length}` });
 });
 
 app.post("/stop", (req, res) => {
-  const session = activeSessions.get(req.body.sid);
-  if(session) { clearInterval(session.timer); activeSessions.delete(req.body.sid); }
-  res.json({ success: true });
+    activeSessions.forEach(s => clearInterval(s.interval));
+    activeSessions = [];
+    res.json({ success: true, message: "All Attack Stopped by YUVI X HENRY!" });
 });
 
-server.listen(PORT, () => console.log("⚡ YUVI X HENRY OBITO MODE ONLINE"));
+server.listen(PORT, () => {
+    console.log(`⚡ YUVI X HENRY Server Started on Port ${PORT}`);
+});

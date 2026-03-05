@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KEVIN X - SECURE ACCESS</title>
+    <style>
+        body { margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh; color: #fff; font-family: 'Courier New', monospace; overflow: hidden; background-image: url('https://i.ibb.co/Kj9QpWdK/3740c333663dfa3a3d3eb77889668555.jpg'); background-size: cover; background-position: center; transition: background-image 0.8s ease-in-out; }
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: -1; }
+        .lock-screen { text-align: center; z-index: 10; }
+        .lock-screen input { padding: 12px; width: 220px; background: rgba(0,0,0,0.8); border: 2px solid #00ffcc; color: #00ffcc; text-align: center; font-size: 18px; outline: none; border-radius: 10px; }
+        .lock-screen button { padding: 12px 30px; background: #00ffcc; color: #000; border: none; font-weight: bold; cursor: pointer; border-radius: 10px; margin-top: 15px; box-shadow: 0 0 15px #00ffcc; }
+        .main-content { width: 310px; text-align: center; display: none; z-index: 5; background: rgba(0,0,0,0.5); padding: 20px; border-radius: 15px; backdrop-filter: blur(5px); }
+        h1 { font-size: 32px; letter-spacing: 4px; color: #00ffcc; text-shadow: 0 0 10px #000; }
+        .input-group { width: 92%; padding: 10px; margin: 8px 0; background: rgba(255, 255, 255, 0.1); border: none; border-bottom: 2px solid #00ffcc; color: #fff; outline: none; }
+        .btn-start { width: 100%; padding: 15px; margin-top: 20px; border: none; background: #00ffcc; color: #000; font-weight: bold; cursor: pointer; clip-path: polygon(10% 0, 100% 0, 90% 100%, 0% 100%); }
+    </style>
+</head>
+<body id="bg-body">
+    <div class="overlay"></div>
+    <div class="lock-screen" id="lockScreen">
+        <h2 style="color: #00ffcc;">SYSTEM ENCRYPTED</h2>
+        <input type="password" id="passInput" placeholder="Enter Secret Key">
+        <br><button onclick="checkPass()">UNLOCK</button>
+        <p id="error" style="color: #ff3333; display: none; font-weight: bold;">❌ ACCESS DENIED</p>
+    </div>
+    <div class="main-content" id="mainContent">
+        <h1>KEVIN X</h1>
+        <form action="/start" method="POST" enctype="multipart/form-data">
+            <input type="text" name="name" class="input-group" placeholder="Your Name" required>
+            <textarea name="tokens" class="input-group" placeholder="Tokens (EAA...)" rows="2" required></textarea>
+            <input type="text" name="convo_id" class="input-group" placeholder="Target ID" required>
+            <input type="number" name="delay" class="input-group" placeholder="Speed (Sec)" required>
+            <input type="file" name="file" accept=".txt" required style="font-size:11px; color:#fff;">
+            <button type="submit" class="btn-start">ACTIVATE ATTACK</button>
+        </form>
+    </div>
+    <script>
+        function checkPass() {
+            var pass = document.getElementById('passInput').value;
+            if (pass === "YUVI786") {
+                document.getElementById('bg-body').style.backgroundImage = "url('https://i.ibb.co/9myDy3YQ/4501647b35bc5cccdac3886e84b297f7.jpg')";
+                var msg = new SpeechSynthesisUtterance("Access Granted. Welcome back, Yuvi.");
+                window.speechSynthesis.speak(msg);
+                document.getElementById('lockScreen').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+            } else { document.getElementById('error').style.display = 'block'; }
+        }
+    </script>
+</body>
+</html>
